@@ -1,24 +1,21 @@
-import { useEffect, useState } from "react";
 import { useParams, Link } from "wouter";
 import { useGetOrder, getGetOrderQueryKey, useGetDelivery, getGetDeliveryQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MapPin, Navigation, Package, ArrowLeft, CheckCircle2, User, Phone, Clock } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { MapView } from "@/components/map-view";
 
+// Steps match actual delivery status flow in the Go backend
 const STATUS_STEPS = [
   { id: "heading_to_seller", label: "Driver Heading to Seller", icon: Navigation },
-  { id: "at_seller",         label: "At Seller",               icon: Package     },
-  { id: "picking_up",        label: "Picking Up",              icon: Package     },
-  { id: "heading_to_buyer",  label: "On the Way to You",       icon: Navigation  },
-  { id: "delivered",         label: "Delivered",               icon: CheckCircle2 },
+  { id: "picking_up",        label: "At Seller — Picking Up",  icon: Package },
+  { id: "heading_to_buyer",  label: "On the Way to You",       icon: Navigation },
+  { id: "delivered",         label: "Delivered!",              icon: CheckCircle2 },
 ];
 
 export default function BuyerTracking() {
   const params = useParams();
   const orderId = Number(params.orderId);
-  const qc = useQueryClient();
 
   const { data: order, isLoading: orderLoading } = useGetOrder(orderId, {
     query: {
@@ -39,9 +36,12 @@ export default function BuyerTracking() {
     },
   });
 
+  // Use enriched delivery from GET /deliveries/:id, fall back to embedded ref
   const d = (delivery ?? rawOrder?.delivery) as any;
 
-  if (orderLoading) return <div className="p-8 text-center text-muted-foreground">Loading tracking info…</div>;
+  if (orderLoading) {
+    return <div className="p-8 text-center text-muted-foreground">Loading tracking info…</div>;
+  }
 
   if (!rawOrder || !rawOrder.delivery) {
     return (
@@ -56,17 +56,28 @@ export default function BuyerTracking() {
 
   const activeIndex = STATUS_STEPS.findIndex((s) => s.id === d?.status);
   const currentIndex = activeIndex === -1 ? 0 : activeIndex;
+  const isDelivered = d?.status === "delivered";
 
-  const mapMarkers = [];
+  const mapMarkers: Array<{ lat: number; lng: number; label: string; color: "orange" | "blue" | "green" | "red"; pulse?: boolean }> = [];
   if (d?.driverLatitude && d?.driverLongitude) {
-    mapMarkers.push({ lat: d.driverLatitude, lng: d.driverLongitude, label: `Driver: ${d?.driver?.name ?? "Your Driver"}`, color: "orange" as const, pulse: d?.status !== "delivered" });
+    mapMarkers.push({
+      lat: d.driverLatitude,
+      lng: d.driverLongitude,
+      label: `Driver: ${d?.driver?.name ?? "Your Driver"}`,
+      color: "orange",
+      pulse: !isDelivered,
+    });
   }
   if (rawOrder.deliveryLatitude && rawOrder.deliveryLongitude) {
-    mapMarkers.push({ lat: rawOrder.deliveryLatitude, lng: rawOrder.deliveryLongitude, label: "Delivery Location", color: "blue" as const });
+    mapMarkers.push({
+      lat: rawOrder.deliveryLatitude,
+      lng: rawOrder.deliveryLongitude,
+      label: "Delivery Location",
+      color: "blue",
+    });
   }
-  // Fallback: Colombo centre
   if (mapMarkers.length === 0) {
-    mapMarkers.push({ lat: 6.9271, lng: 79.8612, label: "Colombo", color: "blue" as const });
+    mapMarkers.push({ lat: 6.9271, lng: 79.8612, label: "Colombo", color: "blue" });
   }
 
   return (
@@ -76,6 +87,11 @@ export default function BuyerTracking() {
           <Link href={`/buyer/order/${orderId}`}><ArrowLeft className="h-4 w-4" /></Link>
         </Button>
         <h1 className="text-2xl font-bold tracking-tight">Live Tracking</h1>
+        {isDelivered && (
+          <span className="ml-auto bg-green-100 text-green-700 font-medium px-3 py-1 rounded-full text-sm flex items-center gap-1">
+            <CheckCircle2 className="h-4 w-4" /> Delivered
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -107,14 +123,16 @@ export default function BuyerTracking() {
               <div className="space-y-4">
                 {STATUS_STEPS.map((step, index) => {
                   const isCompleted = index <= currentIndex;
-                  const isCurrent = index === currentIndex;
+                  const isCurrent = index === currentIndex && !isDelivered;
                   const StepIcon = step.icon;
                   return (
                     <div
                       key={step.id}
                       className={`flex items-center gap-3 ${isCompleted ? "text-foreground" : "text-muted-foreground opacity-40"}`}
                     >
-                      <div className={`p-1.5 rounded-full shrink-0 ${isCurrent ? "bg-primary text-primary-foreground animate-pulse" : isCompleted ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                      <div className={`p-1.5 rounded-full shrink-0 transition-all
+                        ${isCurrent ? "bg-primary text-primary-foreground animate-pulse" :
+                          isCompleted ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                         <StepIcon className="h-3.5 w-3.5" />
                       </div>
                       <span className={`text-sm font-medium ${isCurrent ? "text-primary" : ""}`}>{step.label}</span>
@@ -126,14 +144,17 @@ export default function BuyerTracking() {
           </Card>
 
           <Card>
-            <CardContent className="pt-4 space-y-1 text-sm">
+            <CardContent className="pt-4 space-y-2 text-sm">
               <div className="flex items-start gap-2 text-muted-foreground">
                 <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 <span>{rawOrder.deliveryAddress}</span>
               </div>
+              {d?.offer?.price && (
+                <p className="text-xs font-medium text-primary">Order total: Rs. {d.offer.price.toLocaleString()}</p>
+              )}
               {d?.driverLatitude && (
-                <p className="text-xs text-muted-foreground pt-1">
-                  Driver at {d.driverLatitude.toFixed(4)}, {d.driverLongitude.toFixed(4)}
+                <p className="text-xs text-muted-foreground">
+                  Driver at {d.driverLatitude.toFixed(4)}, {d.driverLongitude?.toFixed(4)}
                 </p>
               )}
             </CardContent>
@@ -146,6 +167,15 @@ export default function BuyerTracking() {
             <CardHeader className="bg-muted/40 border-b py-3 px-4">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-primary" /> Live Map
+                {!isDelivered && d?.driverLatitude && (
+                  <span className="ml-auto flex items-center gap-1.5 text-xs text-green-600 font-normal">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                    Live
+                  </span>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -153,7 +183,6 @@ export default function BuyerTracking() {
                 markers={mapMarkers}
                 zoom={14}
                 className="rounded-none border-0"
-                key={JSON.stringify(mapMarkers)}
               />
             </CardContent>
           </Card>

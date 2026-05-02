@@ -2,7 +2,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLogout } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Package, Menu, X, LogOut, User, LayoutDashboard, ListOrdered, Users, ShoppingBag, Archive } from "lucide-react";
+import { Package, Menu, X, LogOut, User, LayoutDashboard, ListOrdered, Users, ShoppingBag, Archive, Bike } from "lucide-react";
 import { useState } from "react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -49,7 +49,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       return (
         <>
           <Link href="/driver" className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-2">
-            <LayoutDashboard className="h-4 w-4" /> Deliveries
+            <Bike className="h-4 w-4" /> Deliveries
           </Link>
         </>
       );
@@ -75,6 +75,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return null;
   };
 
+  // Online status dot for drivers
+  const DriverStatusDot = () => {
+    if (!user || user.role !== "driver") return null;
+    return (
+      <span
+        title={user.isOnline ? "Online" : "Offline"}
+        className={`inline-block h-2.5 w-2.5 rounded-full ring-2 ring-background ${user.isOnline ? "bg-green-500" : "bg-gray-400"}`}
+      />
+    );
+  };
+
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
@@ -97,6 +108,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <User className="h-4 w-4" />
                   <span className="font-medium text-foreground">{user?.name}</span>
                   <span className="text-xs bg-secondary px-2 py-0.5 rounded-full capitalize">{user?.role}</span>
+                  <DriverStatusDot />
                 </div>
                 <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
                   <LogOut className="h-4 w-4" />
@@ -134,6 +146,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <User className="h-4 w-4" />
                   <span className="font-medium">{user?.name}</span>
                   <span className="text-xs bg-secondary px-2 py-0.5 rounded-full capitalize">{user?.role}</span>
+                  <DriverStatusDot />
                 </div>
                 <Button variant="outline" className="w-full justify-start gap-2" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
                   <LogOut className="h-4 w-4" />

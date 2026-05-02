@@ -1,186 +1,227 @@
 package main
 
 import (
-        "context"
-        "errors"
-        "strconv"
-        "time"
+	"context"
+	"errors"
+	"strconv"
+	"time"
 
-        "github.com/gin-gonic/gin"
-        pgx "github.com/jackc/pgx/v5"
+	"github.com/gin-gonic/gin"
+	pgx "github.com/jackc/pgx/v5"
 )
 
 const deliveryCols = `id, order_id, driver_id, offer_id, status, driver_latitude, driver_longitude, picked_up_at, delivered_at, created_at, updated_at`
 
-func scanDelivery(row pgx.CollectableRow) (Delivery, error) {
-        var d Delivery
-        err := row.Scan(&d.ID, &d.OrderID, &d.DriverID, &d.OfferID,
-                &d.Status, &d.DriverLatitude, &d.DriverLongitude,
-                &d.PickedUpAt, &d.DeliveredAt, &d.CreatedAt, &d.UpdatedAt)
-        return d, err
+const deliveryJoinQuery = `
+	SELECT
+		dv.id, dv.order_id, dv.driver_id, dv.offer_id, dv.status,
+		dv.driver_latitude, dv.driver_longitude,
+		dv.picked_up_at, dv.delivered_at, dv.created_at, dv.updated_at,
+		dr.id, dr.name, dr.phone,
+		o.id, o.item_description, o.delivery_address, o.delivery_latitude, o.delivery_longitude,
+		bu.id, bu.name, bu.phone,
+		of.id, of.price,
+		se.id, se.name, se.phone
+	FROM deliveries dv
+	JOIN users dr    ON dr.id = dv.driver_id
+	JOIN orders o    ON o.id  = dv.order_id
+	JOIN users bu    ON bu.id = o.buyer_id
+	JOIN offers of   ON of.id = dv.offer_id
+	JOIN users se    ON se.id = of.seller_id`
+
+func scanDeliveryDetail(rows pgx.Rows) (DeliveryDetail, error) {
+	var d DeliveryDetail
+	err := rows.Scan(
+		&d.ID, &d.OrderID, &d.DriverID, &d.OfferID, &d.Status,
+		&d.DriverLatitude, &d.DriverLongitude,
+		&d.PickedUpAt, &d.DeliveredAt, &d.CreatedAt, &d.UpdatedAt,
+		&d.Driver.ID, &d.Driver.Name, &d.Driver.Phone,
+		&d.Order.ID, &d.Order.ItemDescription, &d.Order.DeliveryAddress,
+		&d.Order.DeliveryLatitude, &d.Order.DeliveryLongitude,
+		&d.Order.Buyer.ID, &d.Order.Buyer.Name, &d.Order.Buyer.Phone,
+		&d.Offer.ID, &d.Offer.Price,
+		&d.Offer.Seller.ID, &d.Offer.Seller.Name, &d.Offer.Seller.Phone,
+	)
+	return d, err
 }
 
+// GET /api/deliveries — enriched list with driver/order/offer/seller info
 func handleListDeliveries(c *gin.Context) {
-        user := c.MustGet("user").(User)
-        ctx := context.Background()
+	user := c.MustGet("user").(User)
+	ctx := context.Background()
+	statusFilter := c.Query("status")
 
-        var query string
-        var args []interface{}
+	var rows pgx.Rows
+	var err error
 
-        base := "SELECT " + deliveryCols + " FROM deliveries"
+	if user.Role == "driver" {
+		if statusFilter != "" {
+			rows, err = db.Query(ctx, deliveryJoinQuery+
+				" WHERE dv.driver_id = $1 AND dv.status = $2 ORDER BY dv.created_at DESC LIMIT 50",
+				user.ID, statusFilter)
+		} else {
+			rows, err = db.Query(ctx, deliveryJoinQuery+
+				" WHERE dv.driver_id = $1 ORDER BY dv.created_at DESC LIMIT 50", user.ID)
+		}
+	} else {
+		if statusFilter != "" {
+			rows, err = db.Query(ctx, deliveryJoinQuery+
+				" WHERE dv.status = $1 ORDER BY dv.created_at DESC LIMIT 50", statusFilter)
+		} else {
+			rows, err = db.Query(ctx, deliveryJoinQuery+
+				" ORDER BY dv.created_at DESC LIMIT 50")
+		}
+	}
+	if err != nil {
+		c.JSON(500, gin.H{"error": "DB error"})
+		return
+	}
+	defer rows.Close()
 
-        if user.Role == "driver" {
-                query = base + " WHERE driver_id = $1 ORDER BY created_at DESC LIMIT 50"
-                args = []interface{}{user.ID}
-        } else {
-                query = base + " ORDER BY created_at DESC LIMIT 50"
-        }
-
-        rows, err := db.Query(ctx, query, args...)
-        if err != nil {
-                c.JSON(500, gin.H{"error": "DB error"})
-                return
-        }
-        deliveries, err := pgx.CollectRows(rows, scanDelivery)
-        if err != nil {
-                c.JSON(500, gin.H{"error": "Scan error"})
-                return
-        }
-        if deliveries == nil {
-                deliveries = []Delivery{}
-        }
-        c.JSON(200, gin.H{"deliveries": deliveries})
+	var deliveries []DeliveryDetail
+	for rows.Next() {
+		d, err := scanDeliveryDetail(rows)
+		if err != nil {
+			continue
+		}
+		deliveries = append(deliveries, d)
+	}
+	if deliveries == nil {
+		deliveries = []DeliveryDetail{}
+	}
+	c.JSON(200, gin.H{"deliveries": deliveries, "total": len(deliveries)})
 }
 
 func getDeliveryDetail(ctx context.Context, deliveryID int) (*DeliveryDetail, error) {
-        var d DeliveryDetail
-        err := db.QueryRow(ctx, `
-                SELECT
-                        dv.id, dv.order_id, dv.driver_id, dv.offer_id, dv.status,
-                        dv.driver_latitude, dv.driver_longitude,
-                        dv.picked_up_at, dv.delivered_at, dv.created_at, dv.updated_at,
-                        dr.id, dr.name, dr.phone,
-                        o.id, o.item_description, o.delivery_address, o.delivery_latitude, o.delivery_longitude,
-                        bu.id, bu.name, bu.phone,
-                        of.id, of.price,
-                        se.id, se.name, se.phone
-                FROM deliveries dv
-                JOIN users dr    ON dr.id = dv.driver_id
-                JOIN orders o    ON o.id  = dv.order_id
-                JOIN users bu    ON bu.id = o.buyer_id
-                JOIN offers of   ON of.id = dv.offer_id
-                JOIN users se    ON se.id = of.seller_id
-                WHERE dv.id = $1`, deliveryID,
-        ).Scan(
-                &d.ID, &d.OrderID, &d.DriverID, &d.OfferID, &d.Status,
-                &d.DriverLatitude, &d.DriverLongitude,
-                &d.PickedUpAt, &d.DeliveredAt, &d.CreatedAt, &d.UpdatedAt,
-                &d.Driver.ID, &d.Driver.Name, &d.Driver.Phone,
-                &d.Order.ID, &d.Order.ItemDescription, &d.Order.DeliveryAddress,
-                &d.Order.DeliveryLatitude, &d.Order.DeliveryLongitude,
-                &d.Order.Buyer.ID, &d.Order.Buyer.Name, &d.Order.Buyer.Phone,
-                &d.Offer.ID, &d.Offer.Price,
-                &d.Offer.Seller.ID, &d.Offer.Seller.Name, &d.Offer.Seller.Phone,
-        )
-        return &d, err
+	rows, err := db.Query(ctx, deliveryJoinQuery+" WHERE dv.id = $1", deliveryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, pgx.ErrNoRows
+	}
+	d, err := scanDeliveryDetail(rows)
+	return &d, err
 }
 
 func handleGetDelivery(c *gin.Context) {
-        deliveryID, err := strconv.Atoi(c.Param("deliveryId"))
-        if err != nil {
-                c.JSON(400, gin.H{"error": "Invalid delivery ID"})
-                return
-        }
-        d, err := getDeliveryDetail(context.Background(), deliveryID)
-        if errors.Is(err, pgx.ErrNoRows) {
-                c.JSON(404, gin.H{"error": "Delivery not found"})
-                return
-        }
-        if err != nil {
-                c.JSON(500, gin.H{"error": "DB error"})
-                return
-        }
-        c.JSON(200, d)
+	deliveryID, err := strconv.Atoi(c.Param("deliveryId"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid delivery ID"})
+		return
+	}
+	d, err := getDeliveryDetail(context.Background(), deliveryID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(404, gin.H{"error": "Delivery not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(500, gin.H{"error": "DB error"})
+		return
+	}
+	c.JSON(200, d)
 }
 
 func handleUpdateDeliveryStatus(c *gin.Context) {
-        deliveryID, err := strconv.Atoi(c.Param("deliveryId"))
-        if err != nil {
-                c.JSON(400, gin.H{"error": "Invalid delivery ID"})
-                return
-        }
+	deliveryID, err := strconv.Atoi(c.Param("deliveryId"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid delivery ID"})
+		return
+	}
 
-        var body struct {
-                Status string `json:"status" binding:"required"`
-        }
-        if err := c.ShouldBindJSON(&body); err != nil {
-                c.JSON(400, gin.H{"error": "status is required"})
-                return
-        }
+	var body struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "status is required"})
+		return
+	}
 
-        ctx := context.Background()
+	ctx := context.Background()
+	now := time.Now()
 
-        if body.Status == "delivered" {
-                now := time.Now()
-                _, err = db.Exec(ctx,
-                        `UPDATE deliveries SET status = $1, delivered_at = $2, updated_at = NOW() WHERE id = $3`,
-                        body.Status, now, deliveryID)
-                if err == nil {
-                        // Update the order status too
-                        var orderID int
-                        db.QueryRow(ctx, "SELECT order_id FROM deliveries WHERE id = $1", deliveryID).Scan(&orderID)
-                        db.Exec(ctx, "UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1", orderID)
-                        db.Exec(ctx, "INSERT INTO activity (type, order_id, description) VALUES ('delivered', $1, 'Order delivered successfully')", orderID)
-                }
-        } else if body.Status == "picking_up" {
-                now := time.Now()
-                _, err = db.Exec(ctx,
-                        `UPDATE deliveries SET status = $1, picked_up_at = $2, updated_at = NOW() WHERE id = $3`,
-                        body.Status, now, deliveryID)
-        } else {
-                _, err = db.Exec(ctx,
-                        `UPDATE deliveries SET status = $1, updated_at = NOW() WHERE id = $2`,
-                        body.Status, deliveryID)
-        }
+	// Get the order ID for status cascade
+	var orderID int
+	db.QueryRow(ctx, "SELECT order_id FROM deliveries WHERE id = $1", deliveryID).Scan(&orderID)
 
-        if err != nil {
-                c.JSON(500, gin.H{"error": "DB error"})
-                return
-        }
+	switch body.Status {
+	case "delivered":
+		_, err = db.Exec(ctx,
+			`UPDATE deliveries SET status = $1, delivered_at = $2, updated_at = NOW() WHERE id = $3`,
+			body.Status, now, deliveryID)
+		if err == nil && orderID > 0 {
+			db.Exec(ctx, "UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1", orderID)
+			db.Exec(ctx, "INSERT INTO activity (type, order_id, description) VALUES ('delivered', $1, 'Order delivered successfully')", orderID)
+		}
+	case "picking_up":
+		_, err = db.Exec(ctx,
+			`UPDATE deliveries SET status = $1, picked_up_at = $2, updated_at = NOW() WHERE id = $3`,
+			body.Status, now, deliveryID)
+		if err == nil && orderID > 0 {
+			db.Exec(ctx, "UPDATE orders SET status = 'picked_up', updated_at = NOW() WHERE id = $1", orderID)
+			db.Exec(ctx, "INSERT INTO activity (type, order_id, description) VALUES ('picked_up', $1, 'Item picked up from seller')", orderID)
+		}
+	case "heading_to_buyer":
+		_, err = db.Exec(ctx,
+			`UPDATE deliveries SET status = $1, updated_at = NOW() WHERE id = $2`,
+			body.Status, deliveryID)
+	case "failed":
+		_, err = db.Exec(ctx,
+			`UPDATE deliveries SET status = $1, updated_at = NOW() WHERE id = $2`,
+			body.Status, deliveryID)
+		if err == nil && orderID > 0 {
+			db.Exec(ctx, "UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1", orderID)
+			db.Exec(ctx, "INSERT INTO activity (type, order_id, description) VALUES ('cancelled', $1, 'Delivery failed')", orderID)
+		}
+	default:
+		_, err = db.Exec(ctx,
+			`UPDATE deliveries SET status = $1, updated_at = NOW() WHERE id = $2`,
+			body.Status, deliveryID)
+	}
 
-        d, _ := getDeliveryDetail(ctx, deliveryID)
-        c.JSON(200, d)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "DB error"})
+		return
+	}
+
+	d, fetchErr := getDeliveryDetail(ctx, deliveryID)
+	if fetchErr != nil {
+		c.JSON(200, gin.H{"message": "Status updated"})
+		return
+	}
+	c.JSON(200, d)
 }
 
 func handleUpdateDriverLocation(c *gin.Context) {
-        deliveryID, err := strconv.Atoi(c.Param("deliveryId"))
-        if err != nil {
-                c.JSON(400, gin.H{"error": "Invalid delivery ID"})
-                return
-        }
+	deliveryID, err := strconv.Atoi(c.Param("deliveryId"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid delivery ID"})
+		return
+	}
 
-        var body struct {
-                Latitude  float64 `json:"latitude" binding:"required"`
-                Longitude float64 `json:"longitude" binding:"required"`
-        }
-        if err := c.ShouldBindJSON(&body); err != nil {
-                c.JSON(400, gin.H{"error": "latitude and longitude required"})
-                return
-        }
+	var body struct {
+		Latitude  float64 `json:"latitude" binding:"required"`
+		Longitude float64 `json:"longitude" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "latitude and longitude required"})
+		return
+	}
 
-        ctx := context.Background()
-        _, err = db.Exec(ctx,
-                `UPDATE deliveries SET driver_latitude = $1, driver_longitude = $2, updated_at = NOW() WHERE id = $3`,
-                body.Latitude, body.Longitude, deliveryID)
-        if err != nil {
-                c.JSON(500, gin.H{"error": "DB error"})
-                return
-        }
+	ctx := context.Background()
+	_, err = db.Exec(ctx,
+		`UPDATE deliveries SET driver_latitude = $1, driver_longitude = $2, updated_at = NOW() WHERE id = $3`,
+		body.Latitude, body.Longitude, deliveryID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "DB error"})
+		return
+	}
 
-        // Also update driver's location in users table
-        user := c.MustGet("user").(User)
-        db.Exec(ctx, "UPDATE users SET latitude = $1, longitude = $2 WHERE id = $3",
-                body.Latitude, body.Longitude, user.ID)
+	// Also update driver's location in users table
+	user := c.MustGet("user").(User)
+	db.Exec(ctx, "UPDATE users SET latitude = $1, longitude = $2 WHERE id = $3",
+		body.Latitude, body.Longitude, user.ID)
 
-        c.JSON(200, gin.H{"message": "Location updated"})
+	c.JSON(200, gin.H{"message": "Location updated", "lat": body.Latitude, "lng": body.Longitude})
 }

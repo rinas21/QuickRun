@@ -58,12 +58,18 @@ export default function Marketplace() {
   });
 
   const handleRequestItem = (item: InventoryItem) => {
+    if (!user) {
+      toast({ title: "Please login as a buyer to order", variant: "destructive" });
+      setLocation("/login");
+      return;
+    }
     if (user?.role !== "buyer") {
       toast({ title: "Only buyers can place orders", variant: "destructive" });
       return;
     }
-    // Pre-fill the new order form with the item name
-    setLocation(`/buyer?prefill=${encodeURIComponent(item.name)}&seller=${encodeURIComponent(item.sellerName)}&price=${item.price}`);
+    // Pre-fill the buyer dashboard form with item details
+    const notes = `From ${item.sellerName} · Rs. ${item.price.toLocaleString()} per ${item.unit}`;
+    setLocation(`/buyer?item=${encodeURIComponent(item.name)}&notes=${encodeURIComponent(notes)}`);
   };
 
   const items = data?.items ?? [];

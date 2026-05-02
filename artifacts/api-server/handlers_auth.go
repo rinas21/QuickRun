@@ -94,6 +94,12 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
+	// Drivers go online automatically on login
+	if user.Role == "driver" {
+		db.Exec(context.Background(), "UPDATE users SET is_online = true WHERE id = $1", user.ID)
+		user.IsOnline = true
+	}
+
 	token, err := signToken(user.ID)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Server error"})
@@ -103,10 +109,34 @@ func handleLogin(c *gin.Context) {
 }
 
 func handleLogout(c *gin.Context) {
+	user := c.MustGet("user").(User)
+	// Drivers go offline on logout
+	if user.Role == "driver" {
+		db.Exec(context.Background(), "UPDATE users SET is_online = false WHERE id = $1", user.ID)
+	}
 	c.JSON(200, gin.H{"message": "Logged out successfully"})
 }
 
 func handleMe(c *gin.Context) {
 	user := c.MustGet("user").(User)
 	c.JSON(200, user)
+}
+
+// PUT /api/auth/online — driver toggles online/offline status
+func handleToggleOnlineStatus(c *gin.Context) {
+	user := c.MustGet("user").(User)
+	var body struct {
+		IsOnline bool `json:"isOnline"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "isOnline required"})
+		return
+	}
+	_, err := db.Exec(context.Background(),
+		"UPDATE users SET is_online = $1 WHERE id = $2", body.IsOnline, user.ID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "DB error"})
+		return
+	}
+	c.JSON(200, gin.H{"isOnline": body.IsOnline, "message": "Status updated"})
 }

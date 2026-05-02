@@ -16,6 +16,7 @@ type DashboardStats struct {
 	OnlineDrivers      int      `json:"onlineDrivers"`
 	DeliveredToday     int      `json:"deliveredToday"`
 	AvgDeliveryMinutes *float64 `json:"avgDeliveryMinutes"`
+	TotalInventory     int      `json:"totalInventory"`
 }
 
 func handleDashboardStats(c *gin.Context) {
@@ -29,10 +30,12 @@ func handleDashboardStats(c *gin.Context) {
 	db.QueryRow(ctx, "SELECT COUNT(*) FROM users WHERE role = 'driver'").Scan(&stats.TotalDrivers)
 	db.QueryRow(ctx, "SELECT COUNT(*) FROM users WHERE role = 'driver' AND is_online = true").Scan(&stats.OnlineDrivers)
 	db.QueryRow(ctx, `SELECT COUNT(*) FROM deliveries WHERE status = 'delivered' AND delivered_at >= NOW() - INTERVAL '1 day'`).Scan(&stats.DeliveredToday)
+	db.QueryRow(ctx, "SELECT COUNT(*) FROM inventory WHERE is_available = true").Scan(&stats.TotalInventory)
 
 	c.JSON(200, stats)
 }
 
+// GET /api/dashboard/activity — returns array (not wrapped object)
 func handleDashboardActivity(c *gin.Context) {
 	rows, err := db.Query(context.Background(),
 		"SELECT id, type, order_id, description, created_at FROM activity ORDER BY created_at DESC LIMIT 20")
@@ -52,9 +55,11 @@ func handleDashboardActivity(c *gin.Context) {
 	if activities == nil {
 		activities = []Activity{}
 	}
-	c.JSON(200, gin.H{"activities": activities})
+	// Return array directly to match OpenAPI spec and frontend expectations
+	c.JSON(200, activities)
 }
 
+// GET /api/dashboard/order-status-breakdown — returns array
 func handleOrderStatusBreakdown(c *gin.Context) {
 	rows, err := db.Query(context.Background(),
 		"SELECT status, COUNT(*) as count FROM orders GROUP BY status ORDER BY count DESC")
@@ -77,5 +82,6 @@ func handleOrderStatusBreakdown(c *gin.Context) {
 	if breakdown == nil {
 		breakdown = []StatusCount{}
 	}
-	c.JSON(200, gin.H{"breakdown": breakdown})
+	// Return array directly to match OpenAPI spec and frontend expectations
+	c.JSON(200, breakdown)
 }

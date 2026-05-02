@@ -32,49 +32,16 @@ const COLOR_MAP: Record<string, string> = {
 
 export function MapView({ center = [6.9271, 79.8612], zoom = 14, markers = [], className = "" }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
+  const mapInstanceRef = useRef<{ map: any; L: any } | null>(null);
   const markersRef = useRef<any[]>([]);
+  // Queue for markers that arrive before the async Leaflet import completes
+  const pendingMarkersRef = useRef<Marker[] | null>(null);
 
-  useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
-
-    // Add pulse animation style
-    const style = document.createElement("style");
-    style.textContent = `@keyframes mapPulse { 0%,100% { transform:scale(1); opacity:0.25; } 50% { transform:scale(2); opacity:0; } }`;
-    document.head.appendChild(style);
-
-    import("leaflet").then((L) => {
-      const map = L.default.map(mapRef.current!, {
-        center,
-        zoom,
-        zoomControl: true,
-        scrollWheelZoom: false,
-      });
-
-      L.default.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
-      }).addTo(map);
-
-      mapInstanceRef.current = { map, L: L.default };
-    });
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.map.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    const { map, L } = mapInstanceRef.current;
-
+  const applyMarkers = (map: any, L: any, markerList: Marker[]) => {
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    markers.forEach((m) => {
+    markerList.forEach((m) => {
       const color = COLOR_MAP[m.color || "orange"];
       const icon = L.divIcon({
         html: ICON_SVG(color, !!m.pulse),
@@ -89,14 +56,64 @@ export function MapView({ center = [6.9271, 79.8612], zoom = 14, markers = [], c
       markersRef.current.push(marker);
     });
 
-    if (markers.length > 0) {
-      const latlngs = markers.map((m) => [m.lat, m.lng] as [number, number]);
-      if (markers.length === 1) {
+    if (markerList.length > 0) {
+      const latlngs = markerList.map((m) => [m.lat, m.lng] as [number, number]);
+      if (markerList.length === 1) {
         map.setView(latlngs[0], zoom);
       } else {
-        map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] });
+        try {
+          map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] });
+        } catch {}
       }
     }
+  };
+
+  useEffect(() => {
+    if (!mapRef.current || mapInstanceRef.current) return;
+
+    const style = document.createElement("style");
+    style.textContent = `@keyframes mapPulse { 0%,100% { transform:scale(1); opacity:0.25; } 50% { transform:scale(2); opacity:0; } }`;
+    document.head.appendChild(style);
+
+    import("leaflet").then((L) => {
+      if (!mapRef.current || mapInstanceRef.current) return;
+
+      const map = L.default.map(mapRef.current, {
+        center,
+        zoom,
+        zoomControl: true,
+        scrollWheelZoom: false,
+      });
+
+      L.default.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(map);
+
+      mapInstanceRef.current = { map, L: L.default };
+
+      // Apply any markers that arrived during async load
+      if (pendingMarkersRef.current !== null) {
+        applyMarkers(map, L.default, pendingMarkersRef.current);
+        pendingMarkersRef.current = null;
+      }
+    });
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.map.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current) {
+      // Map not ready yet — queue the markers for when it loads
+      pendingMarkersRef.current = markers;
+      return;
+    }
+    applyMarkers(mapInstanceRef.current.map, mapInstanceRef.current.L, markers);
   }, [markers]);
 
   return (

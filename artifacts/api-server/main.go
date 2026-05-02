@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -13,12 +14,26 @@ import (
 var db *pgxpool.Pool
 
 func main() {
-	var err error
-	db, err = pgxpool.New(context.Background(), os.Getenv("DATABASE_URL"))
+	// Configure connection pool for production load handling
+	config, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		log.Fatalf("cannot parse database URL: %v", err)
+	}
+	config.MinConns = 2
+	config.MaxConns = 20
+	config.MaxConnIdleTime = 5 * time.Minute
+	config.HealthCheckPeriod = 1 * time.Minute
+
+	db, err = pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		log.Fatalf("cannot connect to database: %v", err)
 	}
 	defer db.Close()
+
+	// Verify connection
+	if err := db.Ping(context.Background()); err != nil {
+		log.Fatalf("database ping failed: %v", err)
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -31,7 +46,10 @@ func main() {
 	}
 	initAuth(secret)
 
-	r := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(gin.Logger())
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins:  true,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -49,6 +67,7 @@ func main() {
 	authGroup.POST("/login", handleLogin)
 	authGroup.POST("/logout", requireAuth, handleLogout)
 	authGroup.GET("/me", requireAuth, handleMe)
+	authGroup.PUT("/online", requireAuth, handleToggleOnlineStatus)
 
 	// Orders
 	orders := api.Group("/orders", requireAuth)
@@ -61,6 +80,7 @@ func main() {
 
 	// Offers
 	offersGroup := api.Group("/offers", requireAuth)
+	offersGroup.GET("/mine", requireRole("seller"), handleMyOffers)
 	offersGroup.POST("/:offerId/select", requireRole("buyer", "admin"), handleSelectOffer)
 
 	// Deliveries
@@ -90,7 +110,7 @@ func main() {
 	inv.PUT("/:itemId", requireRole("seller"), handleUpdateInventoryItem)
 	inv.DELETE("/:itemId", requireRole("seller"), handleDeleteInventoryItem)
 
-	log.Printf("QuickRun Go API server starting on :%s", port)
+	log.Printf("QuickRun Go API starting on :%s (pool: min=2, max=20)", port)
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

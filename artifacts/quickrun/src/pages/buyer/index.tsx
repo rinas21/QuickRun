@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -23,20 +24,37 @@ export default function BuyerDashboard() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const createOrderMutation = useCreateOrder();
-  
+
   const { data: ordersData, isLoading } = useListOrders({ limit: 10 });
+
+  // Read URL prefill params (from marketplace "Request Delivery" button)
+  const searchParams = new URLSearchParams(window.location.search);
+  const prefillItem = searchParams.get("item") ?? "";
+  const prefillNotes = searchParams.get("notes") ?? "";
+  const prefillAddress = searchParams.get("address") ?? "";
 
   const form = useForm<z.infer<typeof createOrderSchema>>({
     resolver: zodResolver(createOrderSchema),
-    defaultValues: { itemDescription: "", deliveryAddress: "", notes: "" },
+    defaultValues: {
+      itemDescription: prefillItem,
+      deliveryAddress: prefillAddress,
+      notes: prefillNotes,
+    },
   });
 
+  // Apply prefill values when URL params change
+  useEffect(() => {
+    if (prefillItem) form.setValue("itemDescription", prefillItem);
+    if (prefillAddress) form.setValue("deliveryAddress", prefillAddress);
+    if (prefillNotes) form.setValue("notes", prefillNotes);
+  }, [prefillItem, prefillAddress, prefillNotes]);
+
   const onSubmit = (data: z.infer<typeof createOrderSchema>) => {
-    createOrderMutation.mutate({ 
+    createOrderMutation.mutate({
       data: {
         ...data,
-        deliveryLatitude: 6.9271, // Colombo default
-        deliveryLongitude: 79.8612
+        deliveryLatitude: 6.9271,
+        deliveryLongitude: 79.8612,
       }
     }, {
       onSuccess: (order) => {
@@ -48,32 +66,33 @@ export default function BuyerDashboard() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "pending": return "bg-gray-100 text-gray-800";
-      case "collecting_offers": return "bg-blue-100 text-blue-800";
-      case "offer_selected": return "bg-yellow-100 text-yellow-800";
-      case "driver_assigned": return "bg-indigo-100 text-indigo-800";
-      case "picked_up": return "bg-orange-100 text-orange-800";
-      case "delivered": return "bg-green-100 text-green-800";
-      case "cancelled": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
+      case "pending":            return "bg-gray-100 text-gray-800";
+      case "collecting_offers":  return "bg-blue-100 text-blue-800";
+      case "offer_selected":     return "bg-yellow-100 text-yellow-800";
+      case "driver_assigned":    return "bg-indigo-100 text-indigo-800";
+      case "picked_up":          return "bg-orange-100 text-orange-800";
+      case "delivered":          return "bg-green-100 text-green-800";
+      case "cancelled":          return "bg-red-100 text-red-800";
+      default:                   return "bg-gray-100 text-gray-800";
     }
   };
 
-  const getStatusLabel = (status: string) => {
-    return status.replace(/_/g, " ");
-  };
+  const isTrackable = (status: string) =>
+    ["driver_assigned", "picked_up"].includes(status);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-1 space-y-6">
-        <Card className="shadow-md border-primary/20 bg-gradient-to-b from-white to-primary/5">
+        <Card className={`shadow-md border-primary/20 bg-gradient-to-b from-white to-primary/5 ${prefillItem ? "ring-2 ring-primary/40" : ""}`}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl text-primary">
               <Package className="h-6 w-6" />
-              Need Something Fast?
+              {prefillItem ? "Complete Your Request" : "Need Something Fast?"}
             </CardTitle>
             <CardDescription>
-              We'll broadcast your request to nearby sellers.
+              {prefillItem
+                ? "We've pre-filled details from the marketplace."
+                : "We'll broadcast your request to nearby sellers."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -155,37 +174,37 @@ export default function BuyerDashboard() {
           <div className="space-y-4">
             {ordersData.orders.map((order) => {
               const isActive = ["pending", "collecting_offers", "offer_selected", "driver_assigned", "picked_up"].includes(order.status);
-              
+              const trackable = isTrackable(order.status);
+
               return (
-                <Card key={order.id} className={`transition-all hover:shadow-md ${isActive ? 'border-l-4 border-l-primary' : ''}`}>
+                <Card key={order.id} className={`transition-all hover:shadow-md ${isActive ? "border-l-4 border-l-primary" : ""}`}>
                   <CardContent className="p-6">
                     <div className="flex flex-col md:flex-row justify-between gap-4">
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <h3 className="font-bold text-lg">{order.itemDescription}</h3>
                           <Badge variant="outline" className={`capitalize ${getStatusColor(order.status)}`}>
-                            {getStatusLabel(order.status)}
+                            {order.status.replace(/_/g, " ")}
                           </Badge>
                         </div>
-                        
-                        <div className="flex items-center text-sm text-muted-foreground gap-4">
+
+                        <div className="flex flex-wrap items-center text-sm text-muted-foreground gap-4">
                           <span className="flex items-center gap-1">
                             <MapPin className="h-4 w-4" /> {order.deliveryAddress}
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="h-4 w-4" /> {formatDistanceToNow(new Date(order.createdAt), { addSuffix: true })}
                           </span>
+                          {order.finalPrice && (
+                            <span className="font-semibold text-primary">Rs. {order.finalPrice.toLocaleString()}</span>
+                          )}
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center">
                         <Button variant={isActive ? "default" : "outline"} asChild>
-                          <Link href={
-                            ["driver_assigned", "picked_up"].includes(order.status) 
-                              ? `/buyer/tracking/${order.id}` 
-                              : `/buyer/order/${order.id}`
-                          }>
-                            {["driver_assigned", "picked_up"].includes(order.status) ? "Track Delivery" : "View Details"}
+                          <Link href={trackable ? `/buyer/tracking/${order.id}` : `/buyer/order/${order.id}`}>
+                            {trackable ? "Track Delivery" : "View Details"}
                             <ArrowRight className="ml-2 h-4 w-4" />
                           </Link>
                         </Button>
