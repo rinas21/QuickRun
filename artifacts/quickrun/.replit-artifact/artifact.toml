@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "QuickRun — Hyperlocal Delivery"
+version = "1.0.0"
+id = "artifacts/quickrun"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19572
+
+[services.development]
+run = "pnpm --filter @workspace/quickrun run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/quickrun", "run", "build" ]
+publicDir = "artifacts/quickrun/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19572"
+BASE_PATH = "/"

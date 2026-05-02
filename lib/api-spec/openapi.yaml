@@ -3,20 +3,32 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: QuickRun hyperlocal delivery API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: orders
+    description: Delivery orders / item requests
+  - name: offers
+    description: Seller offers on orders
+  - name: deliveries
+    description: Driver delivery assignments
+  - name: users
+    description: User management
+  - name: dashboard
+    description: Dashboard summaries and stats
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +36,434 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── AUTH ────────────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBody"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current session
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthenticated
+
+  # ── ORDERS ──────────────────────────────────────────────────────────
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [orders]
+      summary: List orders (filtered by role)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/OrderStatus"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderListResponse"
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Buyer creates a new item request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderBody"
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{orderId}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get a single order with its offers
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order with offers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+
+  /orders/{orderId}/cancel:
+    post:
+      operationId: cancelOrder
+      tags: [orders]
+      summary: Buyer or admin cancels an order
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  # ── OFFERS ──────────────────────────────────────────────────────────
+  /orders/{orderId}/offers:
+    get:
+      operationId: listOffers
+      tags: [offers]
+      summary: List offers for an order
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of offers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Offer"
+    post:
+      operationId: createOffer
+      tags: [offers]
+      summary: Seller submits an offer on an order
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOfferBody"
+      responses:
+        "201":
+          description: Offer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+
+  /offers/{offerId}/select:
+    post:
+      operationId: selectOffer
+      tags: [offers]
+      summary: Buyer selects an offer — triggers driver assignment
+      parameters:
+        - name: offerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Offer selected and driver assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+
+  # ── DELIVERIES ──────────────────────────────────────────────────────
+  /deliveries:
+    get:
+      operationId: listDeliveries
+      tags: [deliveries]
+      summary: List deliveries (driver sees their own, admin sees all)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/DeliveryStatus"
+      responses:
+        "200":
+          description: List of deliveries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Delivery"
+
+  /deliveries/{deliveryId}:
+    get:
+      operationId: getDelivery
+      tags: [deliveries]
+      summary: Get a delivery with full order/offer detail
+      parameters:
+        - name: deliveryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Delivery detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDetail"
+
+  /deliveries/{deliveryId}/status:
+    patch:
+      operationId: updateDeliveryStatus
+      tags: [deliveries]
+      summary: Driver updates delivery status
+      parameters:
+        - name: deliveryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeliveryStatusBody"
+      responses:
+        "200":
+          description: Delivery updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+
+  /deliveries/{deliveryId}/location:
+    patch:
+      operationId: updateDriverLocation
+      tags: [deliveries]
+      summary: Driver reports current GPS location
+      parameters:
+        - name: deliveryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLocationBody"
+      responses:
+        "200":
+          description: Location updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  # ── USERS / ADMIN ────────────────────────────────────────────────────
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: Admin — list all users
+      parameters:
+        - name: role
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserRole"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /users/{userId}/status:
+    patch:
+      operationId: updateUserStatus
+      tags: [users]
+      summary: Admin — activate or deactivate a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserStatusBody"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/drivers/available:
+    get:
+      operationId: listAvailableDrivers
+      tags: [users]
+      summary: List drivers currently online and available
+      responses:
+        "200":
+          description: Available drivers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  # ── DASHBOARD / WOW ─────────────────────────────────────────────────
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Platform-wide counts and totals (admin)
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Recent order activity feed
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /dashboard/order-status-breakdown:
+    get:
+      operationId: getOrderStatusBreakdown
+      tags: [dashboard]
+      summary: Count of orders grouped by status
+      responses:
+        "200":
+          description: Status breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StatusCount"
+
+# ── COMPONENTS ──────────────────────────────────────────────────────────
 components:
   schemas:
     HealthStatus:
@@ -31,6 +471,318 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    UserRole:
+      type: string
+      enum: [buyer, seller, driver, admin]
+
+    OrderStatus:
+      type: string
+      enum: [pending, collecting_offers, offer_selected, driver_assigned, picked_up, delivered, cancelled]
+
+    DeliveryStatus:
+      type: string
+      enum: [assigned, heading_to_seller, picked_up, heading_to_buyer, delivered, failed]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+        isActive:
+          type: boolean
+        isOnline:
+          type: boolean
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, email, role, isActive, isOnline, createdAt]
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        buyerId:
+          type: integer
+        itemDescription:
+          type: string
+        deliveryAddress:
+          type: string
+        deliveryLatitude:
+          type: number
+        deliveryLongitude:
+          type: number
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        notes:
+          type: string
+          nullable: true
+        selectedOfferId:
+          type: integer
+          nullable: true
+        finalPrice:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, buyerId, itemDescription, deliveryAddress, deliveryLatitude, deliveryLongitude, status, createdAt, updatedAt]
+
+    Offer:
+      type: object
+      properties:
+        id:
+          type: integer
+        orderId:
+          type: integer
+        sellerId:
+          type: integer
+        seller:
+          $ref: "#/components/schemas/User"
+        price:
+          type: number
+        available:
+          type: boolean
+        estimatedMinutes:
+          type: integer
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, orderId, sellerId, seller, price, available, createdAt]
+
+    Delivery:
+      type: object
+      properties:
+        id:
+          type: integer
+        orderId:
+          type: integer
+        driverId:
+          type: integer
+        driver:
+          $ref: "#/components/schemas/User"
+        offerId:
+          type: integer
+        status:
+          $ref: "#/components/schemas/DeliveryStatus"
+        driverLatitude:
+          type: number
+          nullable: true
+        driverLongitude:
+          type: number
+          nullable: true
+        pickedUpAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, orderId, driverId, driver, offerId, status, createdAt]
+
+    OrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/Order"
+        - type: object
+          properties:
+            buyer:
+              $ref: "#/components/schemas/User"
+            offers:
+              type: array
+              items:
+                $ref: "#/components/schemas/Offer"
+            delivery:
+              $ref: "#/components/schemas/Delivery"
+              nullable: true
+          required: [buyer, offers]
+
+    DeliveryDetail:
+      allOf:
+        - $ref: "#/components/schemas/Delivery"
+        - type: object
+          properties:
+            order:
+              $ref: "#/components/schemas/Order"
+            offer:
+              $ref: "#/components/schemas/Offer"
+          required: [order, offer]
+
+    OrderListResponse:
+      type: object
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Order"
+        total:
+          type: integer
+      required: [orders, total]
+
+    DashboardStats:
+      type: object
+      properties:
+        totalOrders:
+          type: integer
+        activeOrders:
+          type: integer
+        totalUsers:
+          type: integer
+        totalSellers:
+          type: integer
+        totalDrivers:
+          type: integer
+        onlineDrivers:
+          type: integer
+        deliveredToday:
+          type: integer
+        avgDeliveryMinutes:
+          type: number
+          nullable: true
+      required: [totalOrders, activeOrders, totalUsers, totalSellers, totalDrivers, onlineDrivers, deliveredToday]
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [order_created, offer_submitted, offer_selected, driver_assigned, picked_up, delivered, cancelled]
+        orderId:
+          type: integer
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, type, orderId, description, createdAt]
+
+    StatusCount:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+      required: [status, count]
+
+    RegisterBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        password:
+          type: string
+          minLength: 6
+        role:
+          $ref: "#/components/schemas/UserRole"
+      required: [name, email, phone, password, role]
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required: [email, password]
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+      required: [user, token]
+
+    CreateOrderBody:
+      type: object
+      properties:
+        itemDescription:
+          type: string
+        deliveryAddress:
+          type: string
+        deliveryLatitude:
+          type: number
+        deliveryLongitude:
+          type: number
+        notes:
+          type: string
+      required: [itemDescription, deliveryAddress, deliveryLatitude, deliveryLongitude]
+
+    CreateOfferBody:
+      type: object
+      properties:
+        price:
+          type: number
+        available:
+          type: boolean
+        estimatedMinutes:
+          type: integer
+        message:
+          type: string
+      required: [price, available]
+
+    UpdateDeliveryStatusBody:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/DeliveryStatus"
+      required: [status]
+
+    UpdateLocationBody:
+      type: object
+      properties:
+        latitude:
+          type: number
+        longitude:
+          type: number
+      required: [latitude, longitude]
+
+    UpdateUserStatusBody:
+      type: object
+      properties:
+        isActive:
+          type: boolean
+      required: [isActive]

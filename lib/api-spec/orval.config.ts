@@ -48,12 +48,11 @@ export default defineConfig({
       },
     },
     output: {
-      workspace: apiZodSrc,
+      // No workspace — write directly to a single file without barrel generation
+      target: path.resolve(apiZodSrc, "generated", "api.ts"),
       client: "zod",
-      target: "generated",
-      schemas: { path: "generated/types", type: "typescript" },
-      mode: "split",
-      clean: true,
+      mode: "single",
+      clean: false,
       prettier: true,
       override: {
         zod: {
