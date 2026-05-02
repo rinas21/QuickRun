@@ -13,11 +13,13 @@ import BuyerOrderDetail from "@/pages/buyer/order-detail";
 import BuyerTracking from "@/pages/buyer/tracking";
 import SellerDashboard from "@/pages/seller/index";
 import SellerRespond from "@/pages/seller/respond";
+import SellerInventory from "@/pages/seller/inventory";
 import DriverDashboard from "@/pages/driver/index";
 import DriverDelivery from "@/pages/driver/delivery";
 import AdminDashboard from "@/pages/admin/index";
 import AdminOrders from "@/pages/admin/orders";
 import AdminUsers from "@/pages/admin/users";
+import Marketplace from "@/pages/marketplace/index";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 
 setAuthTokenGetter(() => localStorage.getItem("qr_token"));
@@ -31,24 +33,20 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoute({ path, component: Component, allowedRoles }: { path: string, component: any, allowedRoles?: string[] }) {
+function ProtectedRoute({ path, component: Component, allowedRoles }: { path: string; component: any; allowedRoles?: string[] }) {
   return (
     <Route path={path}>
       {(params) => {
         const { isAuthenticated, isLoading, user } = useAuth();
-        
-        if (isLoading) return <div>Loading...</div>;
+        if (isLoading) return <div>Loading…</div>;
         if (!isAuthenticated) return <Redirect to="/login" />;
-        
         if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-          // Redirect to their default dashboard if wrong role
-          if (user.role === 'buyer') return <Redirect to="/buyer" />;
-          if (user.role === 'seller') return <Redirect to="/seller" />;
-          if (user.role === 'driver') return <Redirect to="/driver" />;
-          if (user.role === 'admin') return <Redirect to="/admin" />;
+          if (user.role === "buyer") return <Redirect to="/buyer" />;
+          if (user.role === "seller") return <Redirect to="/seller" />;
+          if (user.role === "driver") return <Redirect to="/driver" />;
+          if (user.role === "admin") return <Redirect to="/admin" />;
           return <Redirect to="/login" />;
         }
-        
         return <Component {...params} />;
       }}
     </Route>
@@ -57,41 +55,45 @@ function ProtectedRoute({ path, component: Component, allowedRoles }: { path: st
 
 function HomeRedirect() {
   const { isAuthenticated, isLoading, user } = useAuth();
-  if (isLoading) return <div className="flex items-center justify-center min-h-[60vh] text-muted-foreground">Loading...</div>;
+  if (isLoading) return <div className="flex items-center justify-center min-h-[60vh] text-muted-foreground">Loading…</div>;
   if (!isAuthenticated) return <Redirect to="/login" />;
-  if (user?.role === 'buyer') return <Redirect to="/buyer" />;
-  if (user?.role === 'seller') return <Redirect to="/seller" />;
-  if (user?.role === 'driver') return <Redirect to="/driver" />;
-  if (user?.role === 'admin') return <Redirect to="/admin" />;
+  if (user?.role === "buyer") return <Redirect to="/buyer" />;
+  if (user?.role === "seller") return <Redirect to="/seller" />;
+  if (user?.role === "driver") return <Redirect to="/driver" />;
+  if (user?.role === "admin") return <Redirect to="/admin" />;
   return <Redirect to="/login" />;
 }
 
 function Router() {
   return (
     <Switch>
-      {/* Auth — public routes first so they always match */}
+      {/* Public */}
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
 
+      {/* Marketplace — accessible to all logged-in users */}
+      <ProtectedRoute path="/marketplace" component={Marketplace} />
+
       {/* Buyer */}
-      <ProtectedRoute path="/buyer/order/:orderId" component={BuyerOrderDetail} allowedRoles={['buyer']} />
-      <ProtectedRoute path="/buyer/tracking/:orderId" component={BuyerTracking} allowedRoles={['buyer']} />
-      <ProtectedRoute path="/buyer" component={BuyerDashboard} allowedRoles={['buyer']} />
+      <ProtectedRoute path="/buyer/order/:orderId" component={BuyerOrderDetail} allowedRoles={["buyer"]} />
+      <ProtectedRoute path="/buyer/tracking/:orderId" component={BuyerTracking} allowedRoles={["buyer"]} />
+      <ProtectedRoute path="/buyer" component={BuyerDashboard} allowedRoles={["buyer"]} />
 
       {/* Seller */}
-      <ProtectedRoute path="/seller/respond/:orderId" component={SellerRespond} allowedRoles={['seller']} />
-      <ProtectedRoute path="/seller" component={SellerDashboard} allowedRoles={['seller']} />
+      <ProtectedRoute path="/seller/inventory" component={SellerInventory} allowedRoles={["seller"]} />
+      <ProtectedRoute path="/seller/respond/:orderId" component={SellerRespond} allowedRoles={["seller"]} />
+      <ProtectedRoute path="/seller" component={SellerDashboard} allowedRoles={["seller"]} />
 
       {/* Driver */}
-      <ProtectedRoute path="/driver/delivery/:deliveryId" component={DriverDelivery} allowedRoles={['driver']} />
-      <ProtectedRoute path="/driver" component={DriverDashboard} allowedRoles={['driver']} />
+      <ProtectedRoute path="/driver/delivery/:deliveryId" component={DriverDelivery} allowedRoles={["driver"]} />
+      <ProtectedRoute path="/driver" component={DriverDashboard} allowedRoles={["driver"]} />
 
       {/* Admin */}
-      <ProtectedRoute path="/admin/orders" component={AdminOrders} allowedRoles={['admin']} />
-      <ProtectedRoute path="/admin/users" component={AdminUsers} allowedRoles={['admin']} />
-      <ProtectedRoute path="/admin" component={AdminDashboard} allowedRoles={['admin']} />
+      <ProtectedRoute path="/admin/orders" component={AdminOrders} allowedRoles={["admin"]} />
+      <ProtectedRoute path="/admin/users" component={AdminUsers} allowedRoles={["admin"]} />
+      <ProtectedRoute path="/admin" component={AdminDashboard} allowedRoles={["admin"]} />
 
-      {/* Root — redirect based on role, placed last */}
+      {/* Root redirect */}
       <Route path="/" component={HomeRedirect} />
 
       <Route component={NotFound} />

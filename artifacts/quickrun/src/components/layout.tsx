@@ -2,7 +2,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLogout } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Package, Menu, X, LogOut, User, LayoutDashboard, ListOrdered, Users } from "lucide-react";
+import { Package, Menu, X, LogOut, User, LayoutDashboard, ListOrdered, Users, ShoppingBag, Archive } from "lucide-react";
 import { useState } from "react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -13,12 +13,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const handleLogout = () => {
     logoutMutation.mutate(undefined, {
-      onSuccess: () => {
-        logout();
-      },
-      onError: () => {
-        logout(); // force logout anyway
-      }
+      onSuccess: () => logout(),
+      onError: () => logout(),
     });
   };
 
@@ -31,6 +27,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/buyer" className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-2">
             <LayoutDashboard className="h-4 w-4" /> My Orders
           </Link>
+          <Link href="/marketplace" className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-2">
+            <ShoppingBag className="h-4 w-4" /> Marketplace
+          </Link>
         </>
       );
     }
@@ -38,7 +37,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       return (
         <>
           <Link href="/seller" className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-2">
-            <LayoutDashboard className="h-4 w-4" /> Incoming Requests
+            <LayoutDashboard className="h-4 w-4" /> Requests
+          </Link>
+          <Link href="/seller/inventory" className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-2">
+            <Archive className="h-4 w-4" /> My Inventory
           </Link>
         </>
       );
@@ -63,6 +65,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
           <Link href="/admin/users" className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-2">
             <Users className="h-4 w-4" /> Users
+          </Link>
+          <Link href="/marketplace" className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-2">
+            <ShoppingBag className="h-4 w-4" /> Marketplace
           </Link>
         </>
       );
@@ -111,7 +116,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </nav>
 
           {/* Mobile Menu Toggle */}
-          <button 
+          <button
             className="md:hidden p-2 -mr-2 text-foreground"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
@@ -124,19 +129,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="md:hidden border-t p-4 bg-background shadow-lg absolute top-16 left-0 right-0 z-50 flex flex-col gap-4">
             <NavLinks />
             {isAuthenticated ? (
-              <>
-                <div className="border-t pt-4 mt-2">
-                  <div className="flex items-center gap-2 text-sm mb-4">
-                    <User className="h-4 w-4" />
-                    <span className="font-medium">{user?.name}</span>
-                    <span className="text-xs bg-secondary px-2 py-0.5 rounded-full capitalize">{user?.role}</span>
-                  </div>
-                  <Button variant="outline" className="w-full justify-start gap-2" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
-                    <LogOut className="h-4 w-4" />
-                    Logout
-                  </Button>
+              <div className="border-t pt-4 mt-2">
+                <div className="flex items-center gap-2 text-sm mb-4">
+                  <User className="h-4 w-4" />
+                  <span className="font-medium">{user?.name}</span>
+                  <span className="text-xs bg-secondary px-2 py-0.5 rounded-full capitalize">{user?.role}</span>
                 </div>
-              </>
+                <Button variant="outline" className="w-full justify-start gap-2" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </Button>
+              </div>
             ) : (
               <div className="flex flex-col gap-2 pt-2 border-t">
                 <Button variant="outline" asChild className="w-full justify-start">
