@@ -36,8 +36,8 @@ export default function SellerRespond() {
 
   const onSubmit = (data: z.infer<typeof offerSchema>) => {
     createOfferMutation.mutate({
+      orderId,
       data: {
-        orderId,
         price: data.price,
         available: true,
         estimatedMinutes: data.estimatedMinutes,

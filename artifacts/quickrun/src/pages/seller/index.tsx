@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListOrders } from "@workspace/api-client-react";
+import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,8 +20,9 @@ function useMyOffers() {
 export default function SellerDashboard() {
   const [activeTab, setActiveTab] = useState<"requests" | "my-offers">("requests");
 
-  const { data: ordersData, isLoading: ordersLoading } = useListOrders({ status: "collecting_offers" }, {
-    query: { refetchInterval: 10000, enabled: activeTab === "requests" }
+  const queryParams = { status: "collecting_offers" as const };
+  const { data: ordersData, isLoading: ordersLoading } = useListOrders(queryParams, {
+    query: { refetchInterval: 10000, enabled: activeTab === "requests", queryKey: getListOrdersQueryKey(queryParams) }
   });
 
   const { data: myOffers = [], isLoading: offersLoading } = useMyOffers();

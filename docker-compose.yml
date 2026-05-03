@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: quickrun
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ./artifacts/api-server
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/quickrun?sslmode=disable
+      SESSION_SECRET: quickrun-secret-key
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      PORT: 19572
+      BASE_PATH: /
+    ports:
+      - "19572:19572"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

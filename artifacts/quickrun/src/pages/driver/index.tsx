@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useListDeliveries } from "@workspace/api-client-react";
+import { useListDeliveries, getListDeliveriesQueryKey } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,8 +16,9 @@ export default function DriverDashboard() {
   const [isOnline, setIsOnline] = useState<boolean>(user?.isOnline ?? false);
   const [isToggling, setIsToggling] = useState(false);
 
-  const { data: deliveriesData, isLoading } = useListDeliveries({ limit: 20 }, {
-    query: { refetchInterval: 10000 }
+  const queryParams = {};
+  const { data: deliveriesData, isLoading } = useListDeliveries(queryParams, {
+    query: { refetchInterval: 10000, queryKey: getListDeliveriesQueryKey(queryParams) }
   });
 
   // Sync with user state from token
@@ -47,10 +48,10 @@ export default function DriverDashboard() {
     }
   };
 
-  const activeDeliveries = deliveriesData?.deliveries?.filter(
+  const activeDeliveries = deliveriesData?.filter(
     (d: any) => d.status !== "delivered" && d.status !== "failed"
   ) ?? [];
-  const completedDeliveries = deliveriesData?.deliveries?.filter(
+  const completedDeliveries = deliveriesData?.filter(
     (d: any) => d.status === "delivered" || d.status === "failed"
   ) ?? [];
 

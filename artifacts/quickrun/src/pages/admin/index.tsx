@@ -1,12 +1,12 @@
-import { useGetDashboardStats, useGetRecentActivity, useGetOrderStatusBreakdown } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetRecentActivity, useGetOrderStatusBreakdown, getGetDashboardStatsQueryKey, getGetRecentActivityQueryKey, getGetOrderStatusBreakdownQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Package, Users, Bike, Activity, TrendingUp, CheckCircle, Clock } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 export default function AdminDashboard() {
-  const { data: stats } = useGetDashboardStats({ query: { refetchInterval: 10000 } });
-  const { data: activity } = useGetRecentActivity({ limit: 10 }, { query: { refetchInterval: 10000 } });
-  const { data: breakdown } = useGetOrderStatusBreakdown({ query: { refetchInterval: 10000 } });
+  const { data: stats } = useGetDashboardStats({ query: { refetchInterval: 10000, queryKey: getGetDashboardStatsQueryKey() } });
+  const { data: activity } = useGetRecentActivity({ limit: 10 }, { query: { refetchInterval: 10000, queryKey: getGetRecentActivityQueryKey({ limit: 10 }) } });
+  const { data: breakdown } = useGetOrderStatusBreakdown({ query: { refetchInterval: 10000, queryKey: getGetOrderStatusBreakdownQueryKey() } });
 
   const chartData = breakdown?.map(item => ({
     name: item.status.replace(/_/g, ' '),

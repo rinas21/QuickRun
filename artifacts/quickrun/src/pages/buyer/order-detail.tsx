@@ -29,6 +29,7 @@ export default function BuyerOrderDetail() {
     query: { 
       enabled: !!orderId && order?.status === 'collecting_offers', 
       queryKey: getListOffersQueryKey(orderId),
+      // @ts-ignore - refetchInterval type mismatch in v5 orval output
       refetchInterval: order?.status === 'collecting_offers' ? 5000 : false
     }
   });
@@ -56,7 +57,7 @@ export default function BuyerOrderDetail() {
   };
 
   const handleSelectOffer = (offerId: number) => {
-    selectOfferMutation.mutate({ orderId, offerId }, {
+    selectOfferMutation.mutate({ offerId }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
         queryClient.invalidateQueries({ queryKey: getListOffersQueryKey(orderId) });

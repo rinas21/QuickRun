@@ -11,7 +11,7 @@ export function signToken(userId: number): string {
 }
 
 export function verifyToken(token: string): { sub: number } {
-  return jwt.verify(token, SECRET) as { sub: number };
+  return jwt.verify(token, SECRET) as unknown as { sub: number };
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {

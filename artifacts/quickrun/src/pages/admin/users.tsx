@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AdminUsers() {
-  const { data } = useListUsers({ limit: 50 });
+  const { data } = useListUsers({ limit: 50 }, { query: { queryKey: getListUsersQueryKey({ limit: 50 }) } });
   const updateStatusMutation = useUpdateUserStatus();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -40,7 +40,7 @@ export default function AdminUsers() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data?.users?.map((u) => (
+              {data?.map((u) => (
                 <TableRow key={u.id}>
                   <TableCell className="font-medium">{u.name}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>

@@ -34,9 +34,10 @@ export default function AdminOrders() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const queryParams = { limit: 100, ...(statusFilter ? { status: statusFilter as any } : {}) };
   const { data, isLoading, refetch } = useListOrders(
-    { limit: 100, ...(statusFilter ? { status: statusFilter as any } : {}) },
-    { query: { refetchInterval: 15000 } }
+    queryParams,
+    { query: { refetchInterval: 15000, queryKey: getListOrdersQueryKey(queryParams) } }
   );
 
   const cancelMutation = useCancelOrder();
